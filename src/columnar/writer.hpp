@@ -1,5 +1,7 @@
 #pragma once
 #include <filesystem>
+#include <fstream>
+#include <vector>
 #include "../core/schema.hpp"
 #include "row_group.hpp"
 
@@ -8,11 +10,17 @@ namespace columnar {
 class ColumnarWriter {
 public:
     ColumnarWriter(const std::filesystem::path& path, const Schema& schema);
-    void write(const RowGroup& rowGroup);
+    ~ColumnarWriter();
+
+    void writeBlock(const RowGroup& block);
+
+    void finalize();
 
 private:
-    std::filesystem::path m_path;
+    std::ofstream m_out;
     Schema m_schema;
+    std::vector<std::pair<uint64_t, uint64_t>> m_blocks; // offset, rows
+    uint64_t m_metadataOffsetPos; 
 };
 
 } // namespace columnar

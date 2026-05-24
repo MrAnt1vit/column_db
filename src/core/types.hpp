@@ -6,21 +6,25 @@
 namespace columnar {
 
 enum class DataType {
-    INT64,
-    STRING
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    String,
+    Date,     
+    DateTime,
+    Char
 };
 
-constexpr std::string_view typeToString(DataType type) {
-    switch (type) {
-        case DataType::INT64: return "int64";
-        case DataType::STRING: return "string";
-    }
-    return "unknown";
-}
-
 inline DataType stringToType(std::string_view str) {
-    if (str == "int64") return DataType::INT64;
-    if (str == "string") return DataType::STRING;
+    if (str == "Int8") return DataType::Int8;
+    if (str == "Int16") return DataType::Int16;
+    if (str == "Int32") return DataType::Int32;
+    if (str == "Int64") return DataType::Int64;
+    if (str == "String") return DataType::String;
+    if (str == "Date")      return DataType::Date;
+    if (str == "DateTime")  return DataType::DateTime;
+    if (str == "Char")      return DataType::Char;
     throw std::runtime_error(std::format("Unknown type: {}", str));
 }
 

@@ -11,7 +11,6 @@ std::string read_file(const std::filesystem::path& path) {
     }
     
     std::string content;
-    // Тут мне помогла llm, позже разберусь подробнее
     file.seekg(0, std::ios::end);
     content.resize(file.tellg());
     file.seekg(0, std::ios::beg);

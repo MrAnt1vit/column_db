@@ -1,3 +1,15 @@
 .cache
 build
 data_restored.csv
+hits_v1.tsv
+schema_hits_v1.csv
+simple
+convert_schema.sh
+create.sql
+gg.sh
+hits_small.csv
+hits.csv
+output.columnar
+schema_cpp.csv
+schema.csv
+schema.txt

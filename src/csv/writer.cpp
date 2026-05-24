@@ -21,7 +21,6 @@ void Writer::writeRow(const std::vector<std::string>& row) {
 }
 
 std::string Writer::escape(const std::string& val) {
-    // Если строка содержит " или , или \n, её надо обернуть в кавычки
     bool needsQuotes = false;
     if (val.find_first_of("\",\n") != std::string::npos) {
         needsQuotes = true;
@@ -34,7 +33,7 @@ std::string Writer::escape(const std::string& val) {
     std::string result = "\"";
     for (char c : val) {
         if (c == '"') {
-            result += "\"\""; // Экранируем кавычку
+            result += "\"\"";
         } else {
             result += c;
         }

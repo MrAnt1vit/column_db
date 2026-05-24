@@ -1,12 +1,13 @@
-#include "columnar_db.hpp" // Подключаем только один файл!
+#include "columnar_db.hpp"
+#include "tools/csv_compare.hpp"
 #include <print>
 
 using namespace columnar;
 
 int main(int argc, char* argv[]) {
     try {
-        std::string csvPath = "data.csv";
-        std::string schemaPath = "schema.csv";
+        std::string csvPath = "hits_small.csv";
+        std::string schemaPath = "schema_cpp.csv";
         std::string dbPath = "output.columnar";
         
         if (argc >= 3) {
@@ -19,15 +20,30 @@ int main(int argc, char* argv[]) {
 
         const std::string restoredCsvPath = "data_restored.csv";
 
-        // Конвертация в БД
+        char delimiter = ',';
+        if (csvPath.ends_with("tsv")) {
+            delimiter = '\t';
+        }
+
         std::println("Converting '{}' using schema '{}'...", csvPath, schemaPath);
-        columnar::Converter::csvToColumnar(csvPath, schemaPath, dbPath);
+        Converter::csvToColumnar(csvPath, schemaPath, dbPath, delimiter);
         std::println("Saved to '{}'", dbPath);
 
-        // Конвертация обратно
         std::println("Restoring back to CSV...");
-        columnar::Converter::columnarToCsv(dbPath, restoredCsvPath);
+        Converter::columnarToCsv(dbPath, restoredCsvPath);
         std::println("Restored to '{}'", restoredCsvPath);
+
+        // std::println("Validating restored CSV against original (logical comparison)...");
+        // CsvDiff diff;
+
+        // bool identical = compareCsvFilesLogical(csvPath, restoredCsvPath, delimiter, &diff, true);        if (identical) {
+        //     std::println("✅ SUCCESS: Original and restored CSV files are identical.");
+        // } else {
+        //     std::println(stderr, "❌ FAILURE: Files differ at logical row {}, column {} (0-based).", diff.line, diff.column);
+        //     std::println(stderr, "   Original field: '{}'", diff.left);
+        //     std::println(stderr, "   Restored field: '{}'", diff.right);
+        //     return 1;
+        // }
 
     } catch (const std::exception& e) {
         std::println(stderr, "Error: {}", e.what());

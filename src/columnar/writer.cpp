@@ -1,59 +1,67 @@
 #include "writer.hpp"
-#include <fstream>
-#include <iostream>
+#include <stdexcept>
 
 namespace columnar {
 
 ColumnarWriter::ColumnarWriter(const std::filesystem::path& path, const Schema& schema)
-    : m_path(path), m_schema(schema) {}
-
-void ColumnarWriter::write(const RowGroup& rowGroup) {
-    std::ofstream out(m_path, std::ios::binary);
-    if (!out) {
-        throw std::runtime_error("Cannot open output file");
+    : m_schema(schema)
+{
+    m_out.open(path, std::ios::binary | std::ios::trunc);
+    if (!m_out) {
+        throw std::runtime_error("Cannot create output file: " + path.string());
     }
 
-    std::vector<uint64_t> columnOffsets;
-    for (const auto& col : rowGroup.columns) {
-        columnOffsets.push_back(static_cast<uint64_t>(out.tellp()));
+    m_out.write("COLM", 4);
+    uint32_t version = 1;
+    m_out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+    uint64_t placeholder = 0;
+    m_out.write(reinterpret_cast<const char*>(&placeholder), sizeof(placeholder));
+    m_metadataOffsetPos = static_cast<uint64_t>(m_out.tellp());
+}
 
-        if (col->getType() == DataType::INT64) {
-            auto intCol = std::static_pointer_cast<Int64Column>(col);
-            out.write(reinterpret_cast<const char*>(intCol->data.data()), 
-                      intCol->data.size() * sizeof(int64_t));
-        } 
-        else if (col->getType() == DataType::STRING) {
-            auto strCol = std::static_pointer_cast<StringColumn>(col);
-            for (const auto& s : strCol->data) {
-                uint32_t len = static_cast<uint32_t>(s.size());
-                out.write(reinterpret_cast<const char*>(&len), sizeof(len));
-                out.write(s.data(), len);
-            }
-        }
+ColumnarWriter::~ColumnarWriter() {
+    if (m_out.is_open()) {
+        try { finalize(); } catch(...) {}
+    }
+}
+
+void ColumnarWriter::writeBlock(const RowGroup& block) {
+    uint64_t offset = m_out.tellp();
+    block.serialize(m_out);
+    m_blocks.emplace_back(offset, block.rowCount());
+}
+
+void ColumnarWriter::finalize() {
+    uint64_t metadataStart = m_out.tellp();
+
+    // Пишем схему: количество колонок, для каждой – длина имени, имя, тип
+    const auto& cols = m_schema.getColumns();
+    uint32_t colCount = static_cast<uint32_t>(cols.size());
+    m_out.write(reinterpret_cast<const char*>(&colCount), sizeof(colCount));
+    for (const auto& col : cols) {
+        uint32_t nameLen = static_cast<uint32_t>(col.name.size());
+        m_out.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
+        m_out.write(col.name.data(), nameLen);
+        int typeCode = static_cast<int>(col.type);
+        m_out.write(reinterpret_cast<const char*>(&typeCode), sizeof(typeCode));
     }
 
-    uint64_t metaStart = static_cast<uint64_t>(out.tellp());
-
-    // Количество строк
-    uint64_t rows = rowGroup.rowCount;
-    out.write(reinterpret_cast<const char*>(&rows), sizeof(rows));
-
-    // Сколько колонок
-    uint32_t cols = static_cast<uint32_t>(columnOffsets.size());
-    out.write(reinterpret_cast<const char*>(&cols), sizeof(cols));
-    out.write(reinterpret_cast<const char*>(columnOffsets.data()), 
-              columnOffsets.size() * sizeof(uint64_t));
-
-    // Схема
-    for (const auto& def : m_schema.getColumns()) {
-        uint32_t nameLen = static_cast<uint32_t>(def.name.size());
-        out.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
-        out.write(def.name.data(), nameLen);
-        int typeCode = (def.type == DataType::INT64) ? 0 : 1;
-        out.write(reinterpret_cast<const char*>(&typeCode), sizeof(typeCode));
+    // Пишем количество блоков и массив (offset, rows)
+    uint64_t blockCount = m_blocks.size();
+    m_out.write(reinterpret_cast<const char*>(&blockCount), sizeof(blockCount));
+    for (const auto& blk : m_blocks) {
+        m_out.write(reinterpret_cast<const char*>(&blk.first), sizeof(blk.first));
+        m_out.write(reinterpret_cast<const char*>(&blk.second), sizeof(blk.second));
     }
 
-    out.write(reinterpret_cast<const char*>(&metaStart), sizeof(metaStart));
+    // Пишем смещение начала метаданных в конец файла
+    m_out.write(reinterpret_cast<const char*>(&metadataStart), sizeof(metadataStart));
+
+    // Возвращаемся в начало и записываем смещение метаданных в заголовок
+    m_out.seekp(m_metadataOffsetPos - sizeof(uint64_t));
+    m_out.write(reinterpret_cast<const char*>(&metadataStart), sizeof(metadataStart));
+    
+    m_out.close();
 }
 
 } // namespace columnar
