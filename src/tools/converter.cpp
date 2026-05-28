@@ -65,9 +65,6 @@ void Converter::csvToColumnar(const std::filesystem::path& csvPath,
         if (currentBlock.isFull()) {
             writer.writeBlock(currentBlock);
             currentBlock.clear();
-            std::cout << "\r\x1b[K"
-                      << "Processed " << processedRows << " rows, block written"
-                      << std::flush;
         }
     }, schema.size());
 

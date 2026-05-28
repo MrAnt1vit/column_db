@@ -13,3 +13,5 @@ output.columnar
 schema_cpp.csv
 schema.csv
 schema.txt
+query_*.csv
+restored.csv

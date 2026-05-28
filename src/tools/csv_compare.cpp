@@ -32,8 +32,6 @@ void LogicalCsvReader::reset() {
 std::vector<std::string> LogicalCsvReader::nextRow() {
     std::string line;
     while (std::getline(pImpl->file, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-
         if (pImpl->incomplete) {
             pImpl->buffer += '\n' + line;
         } else {

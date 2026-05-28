@@ -11,6 +11,26 @@
 
 namespace columnar {
 
+inline std::string int128ToString(i128 v) {
+    if (v == 0) return "0";
+    bool negative = v < 0;
+    u128 u;
+    if (negative) {
+        u = static_cast<u128>(-(v + 1)) + 1;
+    } else {
+        u = static_cast<u128>(v);
+    }
+    char buf[40];
+    int len = 0;
+    while (u > 0) {
+        buf[len++] = '0' + static_cast<char>(u % 10);
+        u /= 10;
+    }
+    if (negative) buf[len++] = '-';
+    std::reverse(buf, buf + len);
+    return std::string(buf, len);
+}
+
 class ColumnData {
 public:
     virtual ~ColumnData() = default;
@@ -21,11 +41,53 @@ public:
     virtual void serialize(std::ostream& out) const = 0;
     virtual void deserialize(std::istream& in, size_t rows) = 0;
     virtual std::string getString(size_t index) const = 0;
+
+    virtual std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const = 0;
+};
+
+class Int128Column : public ColumnData {
+public:
+    using value_type = i128;
+    std::vector<i128> data;
+
+    DataType getType() const override { return DataType::Int128; }
+    size_t size() const override { return data.size(); }
+    void clear() override { data.clear(); }
+
+    size_t addFromString(const std::string& ) override {
+        throw std::runtime_error("Int128Column::addFromString is not supported");
+    }
+
+    void serialize(std::ostream& out) const override {
+        out.write(reinterpret_cast<const char*>(data.data()),
+                  data.size() * sizeof(i128));
+    }
+
+    void deserialize(std::istream& in, size_t rows) override {
+        data.resize(rows);
+        in.read(reinterpret_cast<char*>(data.data()), rows * sizeof(i128));
+    }
+
+    std::string getString(size_t index) const override {
+        return int128ToString(data[index]);
+    }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<Int128Column>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 template<typename T, DataType DT>
 class TypedColumn : public ColumnData {
 public:
+    using value_type = T; 
     std::vector<T> data;
 
     DataType getType() const override { return DT; }
@@ -42,7 +104,6 @@ public:
                     val = static_cast<T>(std::stoll(str));
                 }
             } catch (const std::exception&) {
-                // Ошибка преобразования — оставляем 0
             }
         }
         data.push_back(val);
@@ -61,10 +122,21 @@ public:
     std::string getString(size_t index) const override {
         return std::to_string(data[index]);
     }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<TypedColumn<T, DT>>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 class CharColumn : public ColumnData {
 public:
+    using value_type = int8_t;
     std::vector<int8_t> data;
     static constexpr int8_t NULL_SENTINEL = -128;
 
@@ -100,10 +172,21 @@ public:
         char ch = static_cast<char>(val);
         return "\"" + std::string(1, ch) + "\"";
     }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<CharColumn>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 class StringColumn : public ColumnData {
 public:
+    using value_type = std::string;
     std::vector<std::string> data;
 
     DataType getType() const override { return DataType::String; }
@@ -138,6 +221,16 @@ public:
     std::string getString(size_t index) const override {
         return "\"" + data[index] + "\"";
     }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<StringColumn>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 namespace detail {
@@ -168,6 +261,7 @@ namespace detail {
 
 class DateColumn : public ColumnData {
 public:
+    using value_type = int32_t;
     std::vector<int32_t> data;
 
     DataType getType() const override { return DataType::Date; }
@@ -202,10 +296,21 @@ public:
     std::string getString(size_t index) const override {
         return detail::format_date(data[index]);
     }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<DateColumn>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 class DateTimeColumn : public ColumnData {
 public:
+    using value_type = int32_t;
     std::vector<int64_t> data;
     DataType getType() const override { return DataType::DateTime; }
     size_t size() const override { return data.size(); }
@@ -246,6 +351,16 @@ public:
         oss << "\"";
         return oss.str();
     }
+
+    std::shared_ptr<ColumnData> cloneSelected(
+        const std::vector<uint8_t>& mask, size_t outRows) const override {
+        auto out = std::make_shared<DateColumn>();
+        out->data.reserve(outRows);
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (mask[i]) out->data.push_back(data[i]);
+        }
+        return out;
+    }
 };
 
 using Int8Column   = TypedColumn<int8_t,   DataType::Int8>;
@@ -262,7 +377,7 @@ public:
     bool isFull() const;
     void clear();
     void serialize(std::ostream& out) const;
-    void deserialize(std::istream& in);
+    void deserialize(std::istream& in, uint64_t rows);
 
     size_t rowCount() const { return m_rows; }
     const std::vector<std::shared_ptr<ColumnData>>& getColumns() const { return m_columns; }

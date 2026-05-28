@@ -52,15 +52,12 @@ void RowGroup::clear() {
 }
 
 void RowGroup::serialize(std::ostream& out) const {
-    out.write(reinterpret_cast<const char*>(&m_rows), sizeof(m_rows));
     for (const auto& col : m_columns) {
         col->serialize(out);
     }
 }
 
-void RowGroup::deserialize(std::istream& in) {
-    uint64_t rows;
-    in.read(reinterpret_cast<char*>(&rows), sizeof(rows));
+void RowGroup::deserialize(std::istream& in, uint64_t rows) {
     m_rows = rows;
     for (auto& col : m_columns) {
         col->deserialize(in, m_rows);

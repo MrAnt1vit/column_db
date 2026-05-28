@@ -22,6 +22,8 @@ public:
 
     void forEachRow(std::function<void(const std::vector<std::string>&)> callback) const;
 
+    std::shared_ptr<ColumnData> readColumn(size_t blockIdx, size_t columnIdx) const;
+
 private:
     std::filesystem::path m_path;
     Schema m_schema;

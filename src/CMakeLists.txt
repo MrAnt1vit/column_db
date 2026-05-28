@@ -31,11 +31,25 @@ add_library(columnar_tools
 )
 target_link_libraries(columnar_tools PUBLIC columnar_csv columnar_format columnar_core)
 
+add_library(columnar_exec
+    exec/scan.cpp
+    exec/aggregate.cpp
+    exec/filter.cpp
+    exec/result_writer.cpp
+)
+target_link_libraries(columnar_exec PUBLIC columnar_format columnar_core)
 
-# --- LIBRARY (Единая точка входа) ---
 add_library(columnar_lib INTERFACE)
 target_link_libraries(columnar_lib INTERFACE columnar_tools)
 target_include_directories(columnar_lib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(columnar_query
+    query/runner.cpp
+)
+target_link_libraries(columnar_query PUBLIC columnar_exec columnar_format columnar_core)
+target_link_libraries(columnar_lib INTERFACE columnar_query)
+
+
 
 add_executable(columnar_db main.cpp)
 target_link_libraries(columnar_db PRIVATE columnar_lib)

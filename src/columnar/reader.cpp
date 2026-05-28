@@ -19,7 +19,7 @@ void ColumnarReader::loadMetadata() {
     if (std::string(magic, 4) != "COLM") throw std::runtime_error("Not a COLM file");
     uint32_t version;
     in.read(reinterpret_cast<char*>(&version), sizeof(version));
-    if (version != 1) throw std::runtime_error("Unsupported version");
+    if (version != 2) throw std::runtime_error("Unsupported version");
 
     uint64_t metadataOffset;
     in.read(reinterpret_cast<char*>(&metadataOffset), sizeof(metadataOffset));
@@ -60,9 +60,18 @@ RowGroup ColumnarReader::readBlock(size_t blockIdx) const {
     std::ifstream in(m_path, std::ios::binary);
     if (!in) throw std::runtime_error("Cannot open file");
 
-    in.seekg(m_blocks[blockIdx].first, std::ios::beg);
+    const uint64_t blockStart = m_blocks[blockIdx].first;
+    in.seekg(static_cast<std::streamoff>(blockStart), std::ios::beg);
+
+    uint64_t rows;
+    in.read(reinterpret_cast<char*>(&rows), sizeof(rows));
+    uint32_t numCols;
+    in.read(reinterpret_cast<char*>(&numCols), sizeof(numCols));
+
+    in.seekg(static_cast<std::streamoff>(numCols) * 2 * sizeof(uint64_t),
+             std::ios::cur);
     RowGroup block(m_schema);
-    block.deserialize(in);
+    block.deserialize(in, rows);
     return block;
 }
 
@@ -84,6 +93,36 @@ void ColumnarReader::forEachRow(std::function<void(const std::vector<std::string
             callback(row);
         }
     }
+}
+
+std::shared_ptr<ColumnData>
+ColumnarReader::readColumn(size_t blockIdx, size_t columnIdx) const {
+    if (!m_metadataLoaded) throw std::runtime_error("Metadata not loaded");
+    if (blockIdx >= m_blocks.size()) throw std::runtime_error("Invalid block index");
+    if (columnIdx >= m_schema.size()) throw std::runtime_error("Invalid column index");
+
+    std::ifstream in(m_path, std::ios::binary);
+    if (!in) throw std::runtime_error("Cannot open file");
+
+    const uint64_t blockStart = m_blocks[blockIdx].first;
+    const uint64_t rows = m_blocks[blockIdx].second;
+
+    const uint64_t entryPos = blockStart
+                              + sizeof(uint64_t)
+                              + sizeof(uint32_t)
+                              + columnIdx * 2 * sizeof(uint64_t);
+    in.seekg(static_cast<std::streamoff>(entryPos), std::ios::beg);
+
+    uint64_t colOffset, colSize;
+    in.read(reinterpret_cast<char*>(&colOffset), sizeof(colOffset));
+    in.read(reinterpret_cast<char*>(&colSize), sizeof(colSize));
+    (void)colSize;
+    in.seekg(static_cast<std::streamoff>(blockStart + colOffset), std::ios::beg);
+
+    const DataType type = m_schema.getColumns()[columnIdx].type;
+    auto col = createColumn(type);
+    col->deserialize(in, rows);
+    return col;
 }
 
 } // namespace columnar

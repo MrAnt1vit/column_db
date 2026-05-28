@@ -2,6 +2,8 @@
 #include <vector>
 #include <string>
 #include "types.hpp"
+#include <optional>
+#include <string_view>
 
 namespace columnar {
 
@@ -22,6 +24,13 @@ public:
 
     size_t size() const {
         return columns.size();
+    }
+
+    std::optional<size_t> indexOf(std::string_view name) const {
+        for (size_t i = 0; i < columns.size(); ++i) {
+            if (columns[i].name == name) return i;
+        }
+        return std::nullopt;
     }
 
 private:

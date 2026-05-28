@@ -12,7 +12,7 @@ ColumnarWriter::ColumnarWriter(const std::filesystem::path& path, const Schema& 
     }
 
     m_out.write("COLM", 4);
-    uint32_t version = 1;
+    uint32_t version = 2;
     m_out.write(reinterpret_cast<const char*>(&version), sizeof(version));
     uint64_t placeholder = 0;
     m_out.write(reinterpret_cast<const char*>(&placeholder), sizeof(placeholder));
@@ -26,9 +26,40 @@ ColumnarWriter::~ColumnarWriter() {
 }
 
 void ColumnarWriter::writeBlock(const RowGroup& block) {
-    uint64_t offset = m_out.tellp();
-    block.serialize(m_out);
-    m_blocks.emplace_back(offset, block.rowCount());
+    const uint64_t blockStart = static_cast<uint64_t>(m_out.tellp());
+
+    uint64_t rows = block.rowCount();
+    m_out.write(reinterpret_cast<const char*>(&rows), sizeof(rows));
+
+    const auto& cols = block.getColumns();
+    uint32_t numCols = static_cast<uint32_t>(cols.size());
+    m_out.write(reinterpret_cast<const char*>(&numCols), sizeof(numCols));
+
+    const uint64_t offsetTablePos = static_cast<uint64_t>(m_out.tellp());
+    const std::vector<char> placeholder(
+        static_cast<size_t>(numCols) * 2 * sizeof(uint64_t), 0);
+    m_out.write(placeholder.data(),
+                static_cast<std::streamsize>(placeholder.size()));
+
+    std::vector<std::pair<uint64_t, uint64_t>> colInfo;
+    colInfo.reserve(numCols);
+    for (const auto& col : cols) {
+        const uint64_t before = static_cast<uint64_t>(m_out.tellp());
+        col->serialize(m_out);
+        const uint64_t after = static_cast<uint64_t>(m_out.tellp());
+        colInfo.emplace_back(before - blockStart, after - before);
+    }
+    const uint64_t blockEnd = static_cast<uint64_t>(m_out.tellp());
+
+    m_out.seekp(static_cast<std::streamoff>(offsetTablePos), std::ios::beg);
+    for (const auto& [off, sz] : colInfo) {
+        m_out.write(reinterpret_cast<const char*>(&off), sizeof(off));
+        m_out.write(reinterpret_cast<const char*>(&sz), sizeof(sz));
+    }
+
+    m_out.seekp(static_cast<std::streamoff>(blockEnd), std::ios::beg);
+
+    m_blocks.emplace_back(blockStart, rows);
 }
 
 void ColumnarWriter::finalize() {

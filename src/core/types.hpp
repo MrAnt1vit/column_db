@@ -5,15 +5,19 @@
 
 namespace columnar {
 
+__extension__ typedef          __int128 i128;
+__extension__ typedef unsigned __int128 u128;
+
 enum class DataType {
     Int8,
     Int16,
     Int32,
     Int64,
+    Int128,
     String,
     Date,     
     DateTime,
-    Char
+    Char,
 };
 
 inline DataType stringToType(std::string_view str) {
