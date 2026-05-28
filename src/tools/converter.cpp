@@ -9,32 +9,23 @@
 
 namespace columnar {
 
-static size_t fastCountLines(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return 0;
-    constexpr size_t BUFFER_SIZE = 65536;
-    char buffer[BUFFER_SIZE];
-    size_t lines = 0;
-    while (in.read(buffer, BUFFER_SIZE)) {
-        lines += std::count(buffer, buffer + BUFFER_SIZE, '\n');
-    }
-    lines += std::count(buffer, buffer + in.gcount(), '\n');
-    return lines;
-}
-
 void Converter::csvToColumnar(const std::filesystem::path& csvPath,
                               const std::filesystem::path& schemaPath,
                               const std::filesystem::path& outputPath,
                               char delimiter) {
     auto schema = Reader::readSchema(schemaPath);
     ColumnarWriter writer(outputPath, schema);
-    size_t totalRows = fastCountLines(csvPath);
-    if (totalRows == 0) totalRows = 1;
+
+    std::error_code ec;
+    uint64_t totalBytes = std::filesystem::file_size(csvPath, ec);
+    if (ec || totalBytes == 0) totalBytes = 1;
 
     const size_t BLOCK_BYTES = 128 * 1024 * 1024;
     RowGroup currentBlock(schema, BLOCK_BYTES);
+
     size_t processedRows = 0;
-    size_t totalBytesRead = 0;
+    uint64_t totalBytesRead = 0;
+
     auto startTime = std::chrono::steady_clock::now();
     auto lastProgressTime = startTime;
 
@@ -42,18 +33,26 @@ void Converter::csvToColumnar(const std::filesystem::path& csvPath,
         for (const auto& field : row) {
             totalBytesRead += field.size() + 1;
         }
+
         currentBlock.addRow(row);
         ++processedRows;
 
         auto now = std::chrono::steady_clock::now();
         if (now - lastProgressTime >= std::chrono::seconds(1)) {
             double elapsed = std::chrono::duration<double>(now - startTime).count();
-            double percent = 100.0 * processedRows / totalRows;
+            double percent = 100.0 * static_cast<double>(totalBytesRead)
+                                  / static_cast<double>(totalBytes);
+            if (percent > 100.0) percent = 100.0;
             double rowsPerSec = processedRows / elapsed;
-            double mbPerSec = (totalBytesRead / 1024.0 / 1024.0) / elapsed;
-            double eta = (totalRows - processedRows) / rowsPerSec;
+            double bytesPerSec = totalBytesRead / elapsed;
+            double mbPerSec = bytesPerSec / (1024.0 * 1024.0);
+            double eta = (bytesPerSec > 0)
+                         ? std::max(0.0,
+                                    (static_cast<double>(totalBytes) - totalBytesRead) / bytesPerSec)
+                         : 0.0;
+
             std::cout << "\r\x1b[K"
-                      << "Processed " << processedRows << " / " << totalRows << " rows ("
+                      << "Processed " << processedRows << " rows ("
                       << std::fixed << std::setprecision(1) << percent << "%), "
                       << std::setprecision(0) << rowsPerSec << " rows/s, "
                       << std::setprecision(2) << mbPerSec << " MB/s, ETA "
