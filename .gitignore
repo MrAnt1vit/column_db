@@ -10,7 +10,6 @@ gg.sh
 hits_small.csv
 hits.csv
 output.columnar
-schema_cpp.csv
 schema.csv
 schema.txt
 query_*.csv
