@@ -8,8 +8,8 @@
 namespace columnar {
 
 struct Batch {
-    size_t rowCount = 0;
-    std::vector<std::shared_ptr<ColumnData>> columns;
+  size_t rowCount = 0;
+  std::vector<std::shared_ptr<ColumnData>> columns;
 };
 
 } // namespace columnar

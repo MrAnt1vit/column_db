@@ -7,8 +7,8 @@ namespace columnar {
 
 class IOperator {
 public:
-    virtual ~IOperator() = default;
-    virtual std::optional<Batch> Next() = 0;
+  virtual ~IOperator() = default;
+  virtual std::optional<Batch> Next() = 0;
 };
 
 } // namespace columnar

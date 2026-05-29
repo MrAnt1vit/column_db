@@ -3,43 +3,43 @@
 
 namespace columnar {
 
-Writer::Writer(const std::filesystem::path& path) {
-    m_out.open(path);
-    if (!m_out) {
-        throw std::runtime_error("Cannot open CSV for writing: " + path.string());
-    }
+Writer::Writer(const std::filesystem::path &path) {
+  m_out.open(path);
+  if (!m_out) {
+    throw std::runtime_error("Cannot open CSV for writing: " + path.string());
+  }
 }
 
-void Writer::writeRow(const std::vector<std::string>& row) {
-    for (size_t i = 0; i < row.size(); ++i) {
-        m_out << escape(row[i]);
-        if (i < row.size() - 1) {
-            m_out << ",";
-        }
+void Writer::writeRow(const std::vector<std::string> &row) {
+  for (size_t i = 0; i < row.size(); ++i) {
+    m_out << escape(row[i]);
+    if (i < row.size() - 1) {
+      m_out << ",";
     }
-    m_out << "\n";
+  }
+  m_out << "\n";
 }
 
-std::string Writer::escape(const std::string& val) {
-    bool needsQuotes = false;
-    if (val.find_first_of("\",\n") != std::string::npos) {
-        needsQuotes = true;
-    }
+std::string Writer::escape(const std::string &val) {
+  bool needsQuotes = false;
+  if (val.find_first_of("\",\n") != std::string::npos) {
+    needsQuotes = true;
+  }
 
-    if (!needsQuotes) {
-        return val;
-    }
+  if (!needsQuotes) {
+    return val;
+  }
 
-    std::string result = "\"";
-    for (char c : val) {
-        if (c == '"') {
-            result += "\"\"";
-        } else {
-            result += c;
-        }
+  std::string result = "\"";
+  for (char c : val) {
+    if (c == '"') {
+      result += "\"\"";
+    } else {
+      result += c;
     }
-    result += "\"";
-    return result;
+  }
+  result += "\"";
+  return result;
 }
 
 } // namespace columnar

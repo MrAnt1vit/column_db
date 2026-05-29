@@ -5,6 +5,6 @@
 
 namespace columnar {
 
-void writeBatchToCsv(std::ostream& out, const Batch& batch);
+void writeBatchToCsv(std::ostream &out, const Batch &batch);
 
 } // namespace columnar
