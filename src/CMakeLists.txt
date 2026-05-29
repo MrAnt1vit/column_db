@@ -36,6 +36,10 @@ add_library(columnar_exec
     exec/aggregate.cpp
     exec/filter.cpp
     exec/result_writer.cpp
+    exec/count_distinct.cpp
+    exec/hash_aggregate.cpp
+    exec/sort.cpp
+    exec/limit.cpp 
 )
 target_link_libraries(columnar_exec PUBLIC columnar_format columnar_core)
 

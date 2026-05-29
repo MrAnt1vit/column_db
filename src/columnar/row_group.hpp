@@ -310,7 +310,7 @@ public:
 
 class DateTimeColumn : public ColumnData {
 public:
-    using value_type = int32_t;
+    using value_type = int64_t;
     std::vector<int64_t> data;
     DataType getType() const override { return DataType::DateTime; }
     size_t size() const override { return data.size(); }
