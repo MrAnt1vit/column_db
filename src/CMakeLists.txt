@@ -27,7 +27,6 @@ target_link_libraries(columnar_format PUBLIC columnar_core columnar_utils)
 
 add_library(columnar_tools
     tools/converter.cpp
-    tools/csv_compare.cpp
 )
 target_link_libraries(columnar_tools PUBLIC columnar_csv columnar_format columnar_core)
 

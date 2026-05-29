@@ -283,13 +283,14 @@ int q7_groupCountAdvEngine(const std::filesystem::path &columnarPath,
   std::unique_ptr<IOperator> plan =
       std::make_unique<ScanOperator>(reader, std::vector<size_t>{advIdx});
   plan = std::make_unique<FilterOperator>(
-      std::move(plan), std::make_unique<ColNotEqualConst<Int16Column>>(0, 0));
+      std::move(plan), std::move(expr));
 
   std::vector<AggSpec> specs = {
       {AggSpec::Kind::Count, 0, DataType::Int64},
   };
-  plan = std::make_unique<HashGroupByAggregateOperator>(
-      std::move(plan), 0, advType, std::move(specs));
+
+  plan = std::make_unique<HashGroupByAggregateOperator>(std::move(plan), std::vector<KeySpec>{ {0, advType} }, std::move(specs));
+
 
   plan = std::make_unique<SortOperator>(std::move(plan),
                                         std::vector<SortKey>{{1, false}});
@@ -328,8 +329,7 @@ int q8_regionDistinctUsers(const std::filesystem::path &columnarPath,
   std::vector<AggSpec> specs = {
       {AggSpec::Kind::CountDistinct, 1, userType},
   };
-  plan = std::make_unique<HashGroupByAggregateOperator>(
-      std::move(plan), 0, regionType, std::move(specs));
+  plan = std::make_unique<HashGroupByAggregateOperator>(std::move(plan), std::vector<KeySpec>{ {0, regionType} }, std::move(specs));
 
   plan = std::make_unique<SortOperator>(std::move(plan),
                                         std::vector<SortKey>{{1, false}});
@@ -379,8 +379,8 @@ int q9_regionMultiAgg(const std::filesystem::path &columnarPath,
       {AggSpec::Kind::CountDistinct, 3, userType},
   };
 
-  plan = std::make_unique<HashGroupByAggregateOperator>(
-      std::move(plan), 0, regionType, std::move(specs));
+  plan = std::make_unique<HashGroupByAggregateOperator>(std::move(plan), std::vector<KeySpec>{ {0, regionType} }, std::move(specs));
+
 
   plan = std::make_unique<SortOperator>(std::move(plan),
                                         std::vector<SortKey>{{2, false}});
@@ -392,6 +392,99 @@ int q9_regionMultiAgg(const std::filesystem::path &columnarPath,
   while (auto batch = plan->Next())
     writeBatchToCsv(out, *batch);
   return 0;
+}
+
+// Q10: SELECT MobilePhoneModel, COUNT(DISTINCT UserID) AS u
+//      FROM hits WHERE MobilePhoneModel <> ''
+//      GROUP BY MobilePhoneModel ORDER BY u DESC LIMIT 10
+int q10_mobileDistinctUsers(const std::filesystem::path& columnarPath,
+                            const std::filesystem::path& outputPath) {
+    auto reader = std::make_shared<ColumnarReader>(columnarPath);
+    reader->loadMetadata();
+
+    const Schema& schema = reader->getSchema();
+    auto mobileIdxOpt = schema.indexOf("MobilePhoneModel");
+    auto userIdxOpt   = schema.indexOf("UserID");
+    if (!mobileIdxOpt || !userIdxOpt)
+        throw std::runtime_error("Q10: missing required column in schema");
+
+    const size_t mobileIdx = *mobileIdxOpt;
+    const size_t userIdx   = *userIdxOpt;
+
+    const DataType mobileType = schema.getColumns()[mobileIdx].type; // String
+    const DataType userType   = schema.getColumns()[userIdx].type;   // Int64
+
+    std::unique_ptr<IOperator> plan =
+        std::make_unique<ScanOperator>(
+            reader, std::vector<size_t>{mobileIdx, userIdx});
+    plan = std::make_unique<FilterOperator>(
+        std::move(plan),
+        std::make_unique<ColNotEqualConst<StringColumn>>( 0, std::string("")));
+
+    std::vector<AggSpec> specs = {
+        { AggSpec::Kind::CountDistinct, 1, userType },
+    };
+    plan = std::make_unique<HashGroupByAggregateOperator>(
+    std::move(plan), std::vector<KeySpec>{ {0, mobileType} }, std::move(specs));
+
+    plan = std::make_unique<SortOperator>(
+    std::move(plan), std::vector<SortKey>{ {1, false} });
+    plan = std::make_unique<LimitOperator>(std::move(plan), 10);
+
+    std::ofstream out(outputPath);
+    if (!out) throw std::runtime_error("Cannot open output: " + outputPath.string());
+    while (auto batch = plan->Next()) writeBatchToCsv(out, *batch);
+    return 0;
+}
+
+// Q11: SELECT MobilePhone, MobilePhoneModel, COUNT(DISTINCT UserID) AS u
+//      FROM hits WHERE MobilePhoneModel <> ''
+//      GROUP BY MobilePhone, MobilePhoneModel ORDER BY u DESC LIMIT 10
+int q11_mobilePhoneAndModel(const std::filesystem::path& columnarPath,
+                            const std::filesystem::path& outputPath) {
+    auto reader = std::make_shared<ColumnarReader>(columnarPath);
+    reader->loadMetadata();
+
+    const Schema& schema = reader->getSchema();
+    auto phoneIdxOpt = schema.indexOf("MobilePhone");
+    auto modelIdxOpt = schema.indexOf("MobilePhoneModel");
+    auto userIdxOpt  = schema.indexOf("UserID");
+    if (!phoneIdxOpt || !modelIdxOpt || !userIdxOpt)
+        throw std::runtime_error("Q11: missing required column in schema");
+
+    const size_t phoneIdx = *phoneIdxOpt;
+    const size_t modelIdx = *modelIdxOpt;
+    const size_t userIdx  = *userIdxOpt;
+
+    const DataType phoneType = schema.getColumns()[phoneIdx].type; // Int8
+    const DataType modelType = schema.getColumns()[modelIdx].type; // String
+    const DataType userType  = schema.getColumns()[userIdx].type;  // Int64
+
+    std::unique_ptr<IOperator> plan =
+        std::make_unique<ScanOperator>(
+            reader, std::vector<size_t>{phoneIdx, modelIdx, userIdx});
+    plan = std::make_unique<FilterOperator>(
+        std::move(plan),
+        std::make_unique<ColNotEqualConst<StringColumn>>(1, std::string("")));
+
+    std::vector<KeySpec> keys = {
+        { 0, phoneType },
+        { 1, modelType },
+    };
+    std::vector<AggSpec> specs = {
+        { AggSpec::Kind::CountDistinct, 2, userType },
+    };
+    plan = std::make_unique<HashGroupByAggregateOperator>(
+        std::move(plan), std::move(keys), std::move(specs));
+
+    plan = std::make_unique<SortOperator>(
+        std::move(plan), std::vector<SortKey>{ {2, false} });
+    plan = std::make_unique<LimitOperator>(std::move(plan), 10);
+
+    std::ofstream out(outputPath);
+    if (!out) throw std::runtime_error("Cannot open output: " + outputPath.string());
+    while (auto batch = plan->Next()) writeBatchToCsv(out, *batch);
+    return 0;
 }
 
 int runQuery(int queryId, const std::filesystem::path &columnarPath,
@@ -429,6 +522,12 @@ int runQuery(int queryId, const std::filesystem::path &columnarPath,
     break;
   case 9:
     rc = q9_regionMultiAgg(columnarPath, outputPath);
+    break;
+  case 10:
+    rc = q10_mobileDistinctUsers(columnarPath, outputPath);
+    break;
+  case 11:
+    rc = q11_mobilePhoneAndModel(columnarPath, outputPath);
     break;
   default:
     std::println(stderr, "Query {} is not implemented yet", queryId);
